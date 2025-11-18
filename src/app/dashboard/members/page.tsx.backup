@@ -1,0 +1,657 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Users,
+  Edit,
+  Trash2,
+  Search,
+  Filter,
+  UserPlus,
+  Mail,
+  Phone,
+  Briefcase,
+  GraduationCap,
+  Shield,
+  X,
+  Save,
+  AlertCircle,
+} from "lucide-react";
+import { LoaderOne } from "@/components/ui/loader";
+import { Role } from "@/types/auth";
+
+interface Member {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  nim?: string | null;
+  phone?: string | null;
+  avatar?: string | null;
+  divisi?: string | null;
+  jabatan?: string | null;
+  angkatan?: string | null;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface CurrentUser {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+}
+
+export default function MembersPage() {
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterRole, setFilterRole] = useState<string>("ALL");
+  const [filterDivisi, setFilterDivisi] = useState<string>("ALL");
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+          .join(""),
+      );
+      const decoded = JSON.parse(jsonPayload);
+      setCurrentUser({
+        id: decoded.id,
+        email: decoded.email,
+        name: decoded.name,
+        role: decoded.role,
+      });
+    } catch (error) {
+      console.error("Token decode error:", error);
+      router.push("/login");
+    }
+
+    fetchMembers();
+  }, [router]);
+
+  const fetchMembers = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch("/api/users", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setMembers(result.data);
+        setFilteredMembers(result.data);
+      }
+    } catch (error) {
+      console.error("Error fetching members:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let filtered = members;
+
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (member) =>
+          member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          member.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          member.nim?.toLowerCase().includes(searchTerm.toLowerCase()),
+      );
+    }
+
+    if (filterRole !== "ALL") {
+      filtered = filtered.filter((member) => member.role === filterRole);
+    }
+
+    if (filterDivisi !== "ALL") {
+      filtered = filtered.filter((member) => member.divisi === filterDivisi);
+    }
+
+    setFilteredMembers(filtered);
+  }, [searchTerm, filterRole, filterDivisi, members]);
+
+  const canManage =
+    currentUser?.role === "ADMIN" || currentUser?.role === "CORE";
+  const canDelete = currentUser?.role === "ADMIN";
+
+  const handleEdit = (member: Member) => {
+    setEditingMember({ ...member });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMember) return;
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`/api/users/${editingMember.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editingMember),
+      });
+
+      if (response.ok) {
+        await fetchMembers();
+        setShowEditModal(false);
+        setEditingMember(null);
+      } else {
+        const result = await response.json();
+        alert(result.message || "Failed to update member");
+      }
+    } catch (error) {
+      console.error("Error updating member:", error);
+      alert("Failed to update member");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (deleteConfirm !== id) {
+      setDeleteConfirm(id);
+      setTimeout(() => setDeleteConfirm(null), 3000);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem("auth_token");
+      const response = await fetch(`/api/users/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        await fetchMembers();
+        setDeleteConfirm(null);
+      } else {
+        const result = await response.json();
+        alert(result.message || "Failed to delete member");
+      }
+    } catch (error) {
+      console.error("Error deleting member:", error);
+      alert("Failed to delete member");
+    }
+  };
+
+  const getRoleBadgeColor = (role: Role) => {
+    switch (role) {
+      case "ADMIN":
+        return "bg-red-100 text-red-800 border-red-200";
+      case "CORE":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "MEMBER":
+        return "bg-green-100 text-green-800 border-green-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getStatusBadgeColor = (status?: string) => {
+    switch (status) {
+      case "ACTIVE":
+        return "bg-green-100 text-green-800";
+      case "INACTIVE":
+        return "bg-gray-100 text-gray-800";
+      case "ALUMNI":
+        return "bg-purple-100 text-purple-800";
+      default:
+        return "bg-gray-100 text-gray-800";
+    }
+  };
+
+  const uniqueDivisi = Array.from(
+    new Set(members.map((m) => m.divisi).filter(Boolean)),
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <LoaderOne />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <Users className="text-blue-600" size={32} />
+            <h1 className="text-3xl font-bold text-gray-900">Anggota POWERS</h1>
+          </div>
+          <p className="text-gray-600">
+            Daftar seluruh anggota organisasi POWERS Politeknik Negeri Pontianak
+          </p>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6 border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Search */}
+            <div className="relative">
+              <Search
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
+              <input
+                type="text"
+                placeholder="Cari nama, email, atau NIM..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Filter Role */}
+            <div className="relative">
+              <Filter
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+              >
+                <option value="ALL">Semua Role</option>
+                <option value="ADMIN">Admin</option>
+                <option value="CORE">Core</option>
+                <option value="MEMBER">Member</option>
+              </select>
+            </div>
+
+            {/* Filter Divisi */}
+            <div className="relative">
+              <Filter
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
+                size={20}
+              />
+              <select
+                value={filterDivisi}
+                onChange={(e) => setFilterDivisi(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+              >
+                <option value="ALL">Semua Divisi</option>
+                {uniqueDivisi.map((divisi) => (
+                  <option key={divisi} value={divisi}>
+                    {divisi}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-sm text-gray-600">
+              Menampilkan{" "}
+              <span className="font-semibold">{filteredMembers.length}</span>{" "}
+              dari <span className="font-semibold">{members.length}</span>{" "}
+              anggota
+            </p>
+          </div>
+        </div>
+
+        {/* Members Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredMembers.map((member) => (
+            <div
+              key={member.id}
+              className="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden"
+            >
+              {/* Avatar Section */}
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-6 text-center">
+                <div className="w-24 h-24 mx-auto bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mb-3">
+                  {member.avatar ? (
+                    <img
+                      src={member.avatar}
+                      alt={member.name}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-3xl font-bold text-white">
+                      {member.name.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl font-bold text-white mb-1">
+                  {member.name}
+                </h3>
+                <div className="flex items-center justify-center gap-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-semibold border ${getRoleBadgeColor(member.role)}`}
+                  >
+                    {member.role}
+                  </span>
+                  {member.status && (
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusBadgeColor(member.status)}`}
+                    >
+                      {member.status}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Info Section */}
+              <div className="p-6 space-y-3">
+                {member.nim && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <GraduationCap className="text-gray-400" size={18} />
+                    <span className="text-gray-700">{member.nim}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 text-sm">
+                  <Mail className="text-gray-400" size={18} />
+                  <span className="text-gray-700 truncate">{member.email}</span>
+                </div>
+                {member.phone && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Phone className="text-gray-400" size={18} />
+                    <span className="text-gray-700">{member.phone}</span>
+                  </div>
+                )}
+                {member.divisi && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Briefcase className="text-gray-400" size={18} />
+                    <span className="text-gray-700">
+                      {member.divisi}
+                      {member.jabatan && ` - ${member.jabatan}`}
+                    </span>
+                  </div>
+                )}
+                {member.angkatan && (
+                  <div className="flex items-center gap-3 text-sm">
+                    <Shield className="text-gray-400" size={18} />
+                    <span className="text-gray-700">
+                      Angkatan {member.angkatan}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions for Admin/Core */}
+              {canManage && (
+                <div className="px-6 pb-6 flex gap-2">
+                  <button
+                    onClick={() => handleEdit(member)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition text-sm font-medium"
+                  >
+                    <Edit size={16} />
+                    Edit
+                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(member.id)}
+                      className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg transition text-sm font-medium ${
+                        deleteConfirm === member.id
+                          ? "bg-red-600 hover:bg-red-700 text-white flex-1"
+                          : "bg-red-100 hover:bg-red-200 text-red-700"
+                      }`}
+                    >
+                      {deleteConfirm === member.id ? (
+                        <>
+                          <AlertCircle size={16} />
+                          Konfirmasi Hapus
+                        </>
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {filteredMembers.length === 0 && (
+          <div className="text-center py-12">
+            <Users className="mx-auto text-gray-400 mb-4" size={48} />
+            <p className="text-gray-600 text-lg">Tidak ada anggota ditemukan</p>
+          </div>
+        )}
+      </div>
+
+      {/* Edit Modal */}
+      {showEditModal && editingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-gray-900">Edit Anggota</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Nama Lengkap
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.name}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        name: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editingMember.email}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        email: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    NIM
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.nim || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        nim: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Telepon
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.phone || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        phone: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Divisi
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.divisi || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        divisi: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Jabatan
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.jabatan || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        jabatan: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Angkatan
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.angkatan || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        angkatan: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    value={editingMember.status || "ACTIVE"}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        status: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                    <option value="ALUMNI">Alumni</option>
+                  </select>
+                </div>
+
+                {currentUser?.role === "ADMIN" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Role
+                    </label>
+                    <select
+                      value={editingMember.role}
+                      onChange={(e) =>
+                        setEditingMember({
+                          ...editingMember,
+                          role: e.target.value as Role,
+                        })
+                      }
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="MEMBER">Member</option>
+                      <option value="CORE">Core</option>
+                      <option value="ADMIN">Admin</option>
+                    </select>
+                  </div>
+                )}
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Avatar URL
+                  </label>
+                  <input
+                    type="text"
+                    value={editingMember.avatar || ""}
+                    onChange={(e) =>
+                      setEditingMember({
+                        ...editingMember,
+                        avatar: e.target.value,
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="https://example.com/avatar.jpg"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6 flex gap-3 justify-end">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition font-medium"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium flex items-center gap-2"
+              >
+                <Save size={18} />
+                Simpan Perubahan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

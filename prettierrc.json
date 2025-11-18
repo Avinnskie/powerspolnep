@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/prettierrc",
+  "semi": true,
+  "singleQuote": true,
+  "jsxSingleQuote": false,
+  "trailingComma": "all",
+  "tabWidth": 2,
+  "printWidth": 100,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "plugins": [
+    // Uncomment jika Anda install plugin di bawah:
+    // "prettier-plugin-tailwindcss",
+    // "@ianvs/prettier-plugin-sort-imports"
+  ]
+
+  // Opsional: jika memakai plugin sort-imports
+  // "importOrder": [
+  //   "^react(.*)$",
+  //   "^next(.*)$",
+  //   "<THIRD_PARTY_MODULES>",
+  //   "^@/(.*)$",
+  //   "^[./]"
+  // ],
+  // "importOrderSeparation": true,
+  // "importOrderSortSpecifiers": true
+}

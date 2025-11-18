@@ -1,0 +1,355 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CORE
+  COMMITTEE
+  RANGERS
+}
+
+model PowersDivision {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  description String?
+  headId    String?
+  head      User?    @relation("PowersDivisionHead", fields: [headId], references: [id])
+  
+  members   User[]   @relation("PowersDivisionMembers")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("powers_divisions")
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  password    String
+  role        Role      @default(RANGERS)
+  
+  // Data Anggota POWERS
+  nim         String?   @unique
+  memberCode  String?   @unique // Kode unik 6-8 karakter untuk QR code statis
+  phone       String?
+  avatar      String?   @db.Text // URL foto profil atau base64 image
+  position    String?   // Posisi/Jabatan (wajib untuk CORE & COMMITTEE, opsional untuk RANGERS)
+  angkatan    String?   // Tahun masuk, contoh: "2023"
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE, ALUMNI
+  
+  // Powers Division Relations
+  powersDivisionId String? // FK to PowersDivision
+  powersDivision   PowersDivision? @relation("PowersDivisionMembers", fields: [powersDivisionId], references: [id])
+  headOfDivisions  PowersDivision[] @relation("PowersDivisionHead")
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  chairedEvents   Event[]           @relation("EventChair")
+  eventDivisions  EventDivision[]   @relation("DivisionHead")
+  divisionMembers EventDivisionMember[]
+  eventParticipants EventParticipant[]
+  attendances     SessionAttendance[]
+  attendancePasses AttendancePass[]
+  
+  // Learning System Relations
+  progress        UserProgress?
+  moduleProgress  UserModuleProgress[] @relation("UserModuleProgress")
+  lessonProgress  UserLessonProgress[] @relation("UserLessonProgress")
+  questionAttempts QuestionAttempt[]   @relation("QuestionAttempts")
+  achievements    UserAchievement[]    @relation("UserAchievements")
+
+  @@map("users")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  name        String
+  theme       String?
+  description String?
+  slug        String   @unique
+  chairId     String
+  chair       User     @relation("EventChair", fields: [chairId], references: [id])
+  startAt     DateTime?
+  endAt       DateTime?
+  status      String   @default("PLANNING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  divisions     EventDivision[]
+  participants  EventParticipant[]
+  sessions      EventSession[]
+  passes        AttendancePass[]
+}
+
+model EventDivision {
+  id       String @id @default(cuid())
+  name     String
+  eventId  String
+  event    Event  @relation(fields: [eventId], references: [id])
+  headId   String?
+  head     User?  @relation("DivisionHead", fields: [headId], references: [id])
+
+  members  EventDivisionMember[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, name])
+}
+
+model EventDivisionMember {
+  id               String         @id @default(cuid())
+  eventDivisionId  String
+  division         EventDivision  @relation(fields: [eventDivisionId], references: [id])
+  userId           String
+  user             User           @relation(fields: [userId], references: [id])
+  role             String         @default("MEMBER")
+  createdAt        DateTime       @default(now())
+
+  @@unique([eventDivisionId, userId])
+}
+
+model EventParticipant {
+  id        String  @id @default(cuid())
+  eventId   String
+  event     Event   @relation(fields: [eventId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  role      String  @default("COMMITTEE")
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, userId])
+}
+
+model EventSession {
+  id          String   @id @default(cuid())
+  eventId     String
+  event       Event    @relation(fields: [eventId], references: [id])
+  title       String
+  description String?
+  location    String?
+  startAt     DateTime?
+  endAt       DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  attendances SessionAttendance[]
+}
+
+model SessionAttendance {
+  id         String     @id @default(cuid())
+  sessionId  String
+  session    EventSession @relation(fields: [sessionId], references: [id])
+  userId     String
+  user       User       @relation(fields: [userId], references: [id])
+  checkInAt  DateTime?
+  checkOutAt DateTime?
+  status     String     @default("PRESENT")
+
+  @@unique([sessionId, userId])
+}
+
+model AttendancePass {
+  id        String   @id @default(cuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  code      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, userId])
+}
+
+// English Learning System Models
+model Level {
+  id          String @id @default(cuid())
+  number      Int    @unique
+  name        String
+  description String?
+  minXp       Int
+  maxXp       Int?
+  color       String @default("#3B82F6")
+  icon        String?
+  
+  users UserProgress[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("levels")
+}
+
+model LearningModule {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  slug        String  @unique
+  difficulty  String  @default("BEGINNER") // BEGINNER, INTERMEDIATE, ADVANCED
+  order       Int
+  isPublished Boolean @default(false)
+  thumbnail   String? // URL or path to thumbnail image
+  xpReward    Int     @default(100) // XP given when module is completed
+  
+  lessons Lesson[]
+  userProgress UserModuleProgress[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("learning_modules")
+}
+
+model Lesson {
+  id        String         @id @default(cuid())
+  title     String
+  content   String         @db.Text // Markdown or HTML content
+  order     Int
+  moduleId  String
+  module    LearningModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  xpReward  Int            @default(20)
+  
+  questions Question[]
+  userProgress UserLessonProgress[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("lessons")
+}
+
+model Question {
+  id          String   @id @default(cuid())
+  lessonId    String
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type        String   // MULTIPLE_CHOICE, TRUE_FALSE, FILL_BLANK, MATCHING
+  question    String   @db.Text
+  options     Json?    // For multiple choice questions
+  correctAnswer String @db.Text
+  explanation String? @db.Text
+  order       Int
+  points      Int      @default(10)
+  
+  attempts QuestionAttempt[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("questions")
+}
+
+model Achievement {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String
+  icon        String?
+  color       String  @default("#F59E0B")
+  criteria    Json    // Conditions to unlock achievement
+  xpReward    Int     @default(50)
+  isSecret    Boolean @default(false)
+  
+  userAchievements UserAchievement[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("achievements")
+}
+
+// User Progress Tracking
+model UserProgress {
+  id        String @id @default(cuid())
+  userId    String @unique
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  totalXp   Int @default(0)
+  levelId   String
+  level     Level @relation(fields: [levelId], references: [id])
+  
+  streak    Int @default(0) // Days of consecutive learning
+  lastActiveAt DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("user_progress")
+}
+
+model UserModuleProgress {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation("UserModuleProgress", fields: [userId], references: [id], onDelete: Cascade)
+  moduleId    String
+  module      LearningModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  progress    Float     @default(0) // Percentage 0-100
+  xpEarned    Int       @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, moduleId])
+  @@map("user_module_progress")
+}
+
+model UserLessonProgress {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation("UserLessonProgress", fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String
+  lesson      Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  isCompleted Boolean   @default(false)
+  completedAt DateTime?
+  xpEarned    Int       @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, lessonId])
+  @@map("user_lesson_progress")
+}
+
+model QuestionAttempt {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation("QuestionAttempts", fields: [userId], references: [id], onDelete: Cascade)
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  
+  answer     String   @db.Text
+  isCorrect  Boolean
+  points     Int      @default(0)
+  timeSpent  Int?     // Time in seconds
+  
+  createdAt DateTime @default(now())
+  
+  @@map("question_attempts")
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation("UserAchievements", fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  unlockedAt DateTime @default(now())
+  
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
